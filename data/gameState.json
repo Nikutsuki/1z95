@@ -1,0 +1,76 @@
+{
+  "players": [
+    {
+      "id": 1,
+      "name": "Player 1",
+      "points": 50000,
+      "health": 33,
+      "isActive": true
+    },
+    {
+      "id": 2,
+      "name": "Player 2",
+      "points": 0,
+      "health": 67,
+      "isActive": true
+    },
+    {
+      "id": 3,
+      "name": "Player 3",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 4,
+      "name": "Player 4",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 5,
+      "name": "Player 5",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 6,
+      "name": "Player 6",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 7,
+      "name": "Player 7",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 8,
+      "name": "Player 8",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 9,
+      "name": "Player 9",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    },
+    {
+      "id": 10,
+      "name": "Player 10",
+      "points": 0,
+      "health": 100,
+      "isActive": true
+    }
+  ],
+  "lastUpdated": "2025-05-25T13:58:22.312Z",
+  "gameTitle": "1z9.5"
+}

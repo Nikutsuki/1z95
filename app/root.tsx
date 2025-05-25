@@ -28,6 +28,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content="1z10 Game Dashboard - Track player status, points, and health in real-time" />
+        <meta name="keywords" content="1z10, game, dashboard, players, points, health, admin" />
+        <meta name="author" content="1z10 Game System" />
+        <title>1z10 Game Dashboard</title>
         <Meta />
         <Links />
       </head>

@@ -1,4 +1,4 @@
-import { json, type ActionFunction, type LoaderFunction, type MetaFunction } from "@remix-run/node";
+import { json, type ActionFunction, type LoaderFunction, type MetaFunction, redirect } from "@remix-run/node";
 import { useLoaderData, useActionData, Form, useNavigation } from "@remix-run/react";
 import { useState, useEffect } from "react";
 import { 
@@ -9,6 +9,8 @@ import {
   type GameState
 } from "~/lib/gameData";
 import { SSEProvider, useSSE, ConnectionStatus } from "~/lib/websocket";
+import { requireAuth, getSession, createAuthSession, commitSession, destroySession } from "~/lib/session";
+import { validatePassword, isSessionExpired } from "~/lib/auth";
 
 export const meta: MetaFunction = () => {
   return [
@@ -17,14 +19,63 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const loader: LoaderFunction = async () => {
+export const loader: LoaderFunction = async ({ request }) => {
+  const session = await requireAuth(request);
+  
+  if (!session) {
+    return json({ requiresAuth: true });
+  }
+
+  // Check if session is expired
+  const loginTime = session.get("loginTime");
+  if (loginTime && isSessionExpired(loginTime)) {
+    return json({ requiresAuth: true });
+  }
+
   const gameState = await loadGameState();
-  return json(gameState);
+  return json({ gameState, requiresAuth: false });
 };
 
 export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
   const actionType = formData.get("actionType") as string;
+
+  // Handle login action
+  if (actionType === "login") {
+    const password = formData.get("password") as string;
+    
+    if (!validatePassword(password)) {
+      return json({ 
+        success: false, 
+        message: "Invalid password. Please try again." 
+      }, { status: 401 });
+    }
+
+    const session = await createAuthSession(request);
+    
+    return redirect("/admin", {
+      headers: {
+        "Set-Cookie": await commitSession(session),
+      },
+    });
+  }
+
+  // Handle logout action
+  if (actionType === "logout") {
+    const session = await getSession(request);
+    
+    return redirect("/admin", {
+      headers: {
+        "Set-Cookie": await destroySession(session),
+      },
+    });
+  }
+
+  // Check authentication for all other actions
+  const session = await requireAuth(request);
+  if (!session) {
+    return json({ success: false, message: "Authentication required" }, { status: 401 });
+  }
 
   try {
     switch (actionType) {
@@ -32,8 +83,18 @@ export const action: ActionFunction = async ({ request }) => {
         const playerId = parseInt(formData.get("playerId") as string);
         const name = formData.get("name") as string;
         const points = parseInt(formData.get("points") as string);
-        const health = parseInt(formData.get("health") as string);
+        const healthRaw = formData.get("health") as string;
+        const health = parseInt(healthRaw);
         const isActive = formData.get("isActive") === "true";
+
+        console.log("DEBUG updatePlayer:", {
+          playerId,
+          name,
+          points,
+          healthRaw,
+          health,
+          isActive
+        });
 
         await updatePlayer(playerId, { name, points, health, isActive });
         return json({ success: true, message: "Player updated successfully" });
@@ -46,13 +107,7 @@ export const action: ActionFunction = async ({ request }) => {
         return json({ success: true, message: "All players reset successfully" });
       }
 
-      case "updateGameTitle": {
-        const gameTitle = formData.get("gameTitle") as string;
-        const gameState = await loadGameState();
-        gameState.gameTitle = gameTitle;
-        await saveGameState(gameState);
-        return json({ success: true, message: "Game title updated successfully" });
-      }
+
 
       default:
         return json({ success: false, message: "Invalid action" }, { status: 400 });
@@ -65,8 +120,75 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
+function LoginForm() {
+  const actionData = useActionData<{ success: boolean; message: string }>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 text-white flex items-center justify-center">
+      <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-8 border border-gray-700 w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
+            Admin Login
+          </h1>
+          <p className="text-gray-300">
+            Enter the admin password to access the game management panel
+          </p>
+        </div>
+
+        {/* Error Message */}
+        {actionData && !actionData.success && (
+          <div className="mb-6 p-4 rounded-lg bg-red-800/50 border border-red-600 text-red-200">
+            {actionData.message}
+          </div>
+        )}
+
+        {/* Login Form */}
+        <Form method="post" className="space-y-6">
+          <input type="hidden" name="actionType" value="login" />
+          
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+              Admin Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              name="password"
+              required
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="Enter admin password"
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300"
+          >
+            {isSubmitting ? "Authenticating..." : "Login"}
+          </button>
+        </Form>
+
+        {/* Back to Game Link */}
+        <div className="text-center mt-6">
+          <a
+            href="/"
+            className="text-blue-400 hover:text-blue-300 text-sm transition-colors duration-300"
+          >
+            ← Back to Game View
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel() {
-  const initialGameState = useLoaderData<GameState>();
+  const initialGameState = useLoaderData<{ gameState: GameState }>();
   const { gameState: liveGameState } = useSSE();
   const actionData = useActionData<{ success: boolean; message: string }>();
   const navigation = useNavigation();
@@ -74,7 +196,7 @@ function AdminPanel() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Use live game state if available, otherwise fallback to initial state
-  const gameState = liveGameState || initialGameState;
+  const gameState = liveGameState || initialGameState.gameState;
   const isSubmitting = navigation.state === "submitting";
 
   // Close editing mode when form is submitted successfully
@@ -110,18 +232,34 @@ function AdminPanel() {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
+          <img 
+            src="/logo.png" 
+            alt="Game Logo" 
+            className="mx-auto mb-4 h-40 md:h-48 lg:h-56 w-auto drop-shadow-2xl"
+          />
+          <h2 className="text-3xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
             Admin Panel
-          </h1>
+          </h2>
           <p className="text-xl text-gray-300 mb-4">
-            Manage {gameState.gameTitle} Game State
+            Manage Game State
           </p>
-          <a
-            href="/"
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300"
-          >
-            ← Back to Game View
-          </a>
+          <div className="flex justify-center gap-4">
+            <a
+              href="/"
+              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300"
+            >
+              ← Back to Game View
+            </a>
+            <Form method="post" className="inline-block">
+              <input type="hidden" name="actionType" value="logout" />
+              <button
+                type="submit"
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300"
+              >
+                Logout
+              </button>
+            </Form>
+          </div>
         </div>
 
         {/* Action Feedback */}
@@ -136,34 +274,8 @@ function AdminPanel() {
         )}
 
         {/* Game Settings */}
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-6 border border-gray-700 mb-8">
-          <h2 className="text-2xl font-bold mb-4 text-purple-400">Game Settings</h2>
-          
-          <Form method="post" className="mb-4">
-            <input type="hidden" name="actionType" value="updateGameTitle" />
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label htmlFor="gameTitle" className="block text-sm font-medium text-gray-300 mb-2">
-                  Game Title
-                </label>
-                <input
-                  id="gameTitle"
-                  type="text"
-                  name="gameTitle"
-                  defaultValue={gameState.gameTitle}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-300"
-              >
-                Update Title
-              </button>
-            </div>
-          </Form>
+        <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-6 mb-8 border border-gray-700">
+          <h3 className="text-2xl font-bold mb-6 text-purple-300">Game Settings</h3>
 
           <div className="flex gap-4">
             <button
@@ -260,7 +372,7 @@ function AdminPanel() {
                         <select
                           id={`health-${player.id}`}
                           name="health"
-                          defaultValue={Math.round((player.health / 100) * 3) * 33.33}
+                          defaultValue={player.health}
                           className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white focus:ring-2 focus:ring-purple-500"
                           required
                         >
@@ -356,10 +468,14 @@ function AdminPanel() {
 }
 
 export default function Admin() {
-  const gameState = useLoaderData<GameState>();
+  const data = useLoaderData<{ gameState?: GameState; requiresAuth: boolean }>();
+  
+  if (data.requiresAuth) {
+    return <LoginForm />;
+  }
   
   return (
-    <SSEProvider initialGameState={gameState}>
+    <SSEProvider initialGameState={data.gameState!}>
       <AdminPanel />
     </SSEProvider>
   );

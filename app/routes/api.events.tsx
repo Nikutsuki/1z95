@@ -6,13 +6,21 @@ export const loader: LoaderFunction = async ({ request }) => {
     new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
+        let isClosed = false;
         
         const sendEvent = (data: unknown, event = "message") => {
-          const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(message));
+          if (isClosed) return;
+          try {
+            const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+            controller.enqueue(encoder.encode(message));
+          } catch (error) {
+            // Connection was likely closed, mark as closed
+            isClosed = true;
+          }
         };
 
         const checkForUpdates = async () => {
+          if (isClosed) return;
           try {
             const gameState = await loadGameState();
             sendEvent(gameState, "gameStateUpdate");
@@ -31,14 +39,22 @@ export const loader: LoaderFunction = async ({ request }) => {
 
         // Keep connection alive
         const heartbeat = setInterval(() => {
-          sendEvent({ timestamp: new Date().toISOString() }, "heartbeat");
+          if (!isClosed) {
+            sendEvent({ timestamp: new Date().toISOString() }, "heartbeat");
+          }
         }, 30000);
 
         // Cleanup function
         const cleanup = () => {
+          if (isClosed) return;
+          isClosed = true;
           unsubscribe();
           clearInterval(heartbeat);
-          controller.close();
+          try {
+            controller.close();
+          } catch (error) {
+            // Controller already closed, ignore
+          }
         };
 
         // Handle client disconnect

@@ -1,7 +1,22 @@
-import type { Config } from "tailwindcss";
-
 export default {
-  content: ["./app/**/{**,.client,.server}/**/*.{js,jsx,ts,tsx}"],
+  content: [
+    "./app/**/*.{js,jsx,ts,tsx}",
+    "./app/**/**/*.{js,jsx,ts,tsx}",
+    "./app/**/**/**/*.{js,jsx,ts,tsx}",
+    "./public/**/*.html",
+  ],
+  safelist: [
+    // Add any dynamic classes that might be purged
+    "bg-gradient-to-br",
+    "from-gray-800/60",
+    "to-gray-900/60",
+    "from-gray-950/90",
+    "to-black/90",
+    "opacity-60",
+    "scale-95",
+    "transition-all",
+    "duration-1000",
+  ],
   theme: {
     extend: {
       fontFamily: {
